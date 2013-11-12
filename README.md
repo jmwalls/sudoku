@@ -16,8 +16,8 @@ Methods include
 ###Organization
 --------
 
-python : contains all code
-data : contains puzzles
+python : contains all code  
+data : contains puzzles  
 
 ###Puzzles
 --------
