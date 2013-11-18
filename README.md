@@ -4,10 +4,11 @@
 Just playing around with a few different ideas to complete Sudoku puzzles.
 Methods include
 
-* Random guessing: prune search space based on givens, randomly guess
-  remaining solutions until we have a solution.
-* Constraint satisfaction: prune the search space based on given squares and
-  then search the remaining candidate solutions.
+* Search: prune the search space based on givens and then search the remaining
+  space until we find a valid solution. We'll try a few different search
+  techniques: depth first search, guess and check.
+* Constraint satisfaction: apply a few different constraint programming
+  algorithms including simulated annealing.
 * Bayesian inference via belief propagation: solve for the maximum a
   posteriori solution conditioned on the given squares. (loopy) Belief
   propagation allows us efficiently compute the solution without tracking the

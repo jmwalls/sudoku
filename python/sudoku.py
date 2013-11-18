@@ -4,7 +4,9 @@ puzzles
 """
 
 from copy import deepcopy
-from random import randint
+import numpy as np
+
+from simanneal import Simanneal
 
 ROWS = 'ABCDEFGHI'
 COLS = '012345678'
@@ -18,6 +20,8 @@ UNITS = [cross (r, COLS) for r in ROWS] +\
         [cross (ROWS, c) for c in COLS] +\
         [cross (r,c) for r in ('ABC','DEF','GHI') for c in ('012','345','678')]
 PEERS = dict ((s,[i for u in UNITS if s in u for i in u if i != s]) for s in SQUARES)
+
+MAXITERS = 1e6
 
 class Sudoku (object):
     """
@@ -37,11 +41,13 @@ class Sudoku (object):
         """
         self.squares = {s:VALS for s in SQUARES}
 
+        self.givens = {}
         if givens is None: return
         for sq, g in zip (SQUARES,givens):
-            self.set_square (sq,g)
+            self.set_given (sq,g)
+        if self._complete (): print '{Sudoku}: puzzle solved already!'
 
-    def set_square (self, sq, val):
+    def set_given (self, sq, val):
         """
         set value of square and eliminate value from square's peers
 
@@ -51,6 +57,8 @@ class Sudoku (object):
         val : value of square
         """
         if not val in VALS: return
+        self.givens[sq] = val
+
         if not val in self.squares[sq]:
             raise Exception ('value has already been eliminated!')
         remain = self.squares[sq].replace (val,'')
@@ -95,33 +103,104 @@ class Sudoku (object):
         """
         if method=='rand': 
             self._solve_random ()
+        elif method=='dfs':
+            self._solve_dfs ()
+        elif method=='simanneal':
+            self._solve_anneal ()
+        elif method=='loopy':
+            self._solve_loopy ()
         else:
             raise Exception ('unknown solve routine requested!')
         return self._complete ()
 
     def _solve_random (self):
         """
-        randomly guess correct configuration until we find the solution
+        Randomly guess correct value for the square with the fewest candidate
+        values until we're right. 
+        
+        If we encounter an invalid configuration, start over.
+
+        Essentially, a slightly more principled bogo search---we are allowed
+        to try the same wrong configuration multiple times.
         """
         squares = deepcopy (self.squares)
         iters = 0
-        while True:
-            if self._complete (): break
-            errs, sq = min ((len (v), s) for s,v in self.squares.iteritems () if len (v)>1)
+        while not self._complete ():
+            errs, sq = min ((len (v), s) for s,v in self.squares.iteritems ()
+                    if len (v)>1)
             try:
                 vals = self.squares[sq]
-                ii = randint (0,len (vals)-1)
+                ii = np.random.randint (0,len (vals))
                 self.eliminate (sq, vals[ii])
             except:
                 self.squares = deepcopy (squares)
+            if iters>MAXITERS:
+                raise Exception ("Random solution routine exceeded maximum allowable iterations")
             iters += 1
-        print '%d iters' % iters
 
     def _solve_dfs (self):
         """
-        DFS
+        Search configuration space beginning with square with fewest candidate
+        values.
+
+        If we encounter an invalid configuration, recurse back up the search
+        tree.
+
+        Probably faster (in general) than _solve_random because we can only
+        try a single incorrect configuration once.
         """
         raise NotImplemented ('DFS not implemented!')
+
+    def _solve_anneal (self):
+        """
+        Apply simulated annealing to solve the puzzle:
+        1. populate the remaining board with the usable set of digits, C_0
+        2. while not solved:
+        3.   choose a neighboring configuration, C
+        4.   if c (C)<c (C_{n}) or U < exp ((c (C_{n}) - c (C))/T)
+        5.      C_{n+1} = C 
+        6.   update (T)
+
+        The cost (c) and neighbor functions generators are also defined below.
+
+        Parameters
+        -----------
+        vals : board configuration stored as an n**2 array
+        """
+        # populate board with remaining values
+        rvals = 9*range (1,10)
+        vals = np.zeros (9*9)
+        for sq,g in self.givens.iteritems ():
+            r,c = ROWS.find (sq[0]), COLS.find (sq[1])
+            vals[9*r + c] = g
+            rvals.remove (int (g))
+        index = np.where (vals==0)[0]
+        for ii in index: vals[ii] = rvals.pop (0)
+
+        # the cost associated with a layout is the number of constraint
+        # violations
+        def cost (v):
+            rcons = [9 - len (np.unique (vals[9*r:9*(r+1)])) for r in range (9)]
+            ccons = [9 - len (np.unique (vals[c::9])) for c in range (9)]
+            #bcons = [len (np.unique (b)) for b in vals]
+            bcons = []
+            return sum (rcons) + sum (ccons) + sum (bcons)
+
+        # a neighbor swaps two cells
+        def nbrs (v):
+            return v
+
+        # 2. optimize
+        opt = Simanneal (cost,nbrs,vals)
+        #iters = 0
+        #while iters < 10:
+        #    opt.next ()
+        #    iters += 1
+
+    def _solve_loopy (self):
+        """
+        """
+        raise NotImplemented ('Loopy belief propagation not implemented!')
 
     def display (self):
         """
@@ -170,6 +249,7 @@ def parse_from_file (fname):
 
 if __name__ == '__main__':
     import sys
+    import time
 
     if len (sys.argv) < 2:
         print 'usage: %s <puzzle.txt>' % sys.argv[0]
@@ -184,8 +264,12 @@ if __name__ == '__main__':
     p.display ()
 
     print '\n\nsolving...',
-    if p.solve (): print 'found unique solution'
-    else: print 'could not find solution'
-    p.display ()
+    start = time.clock ()
+    if p.solve ('simanneal'): 
+        print 'found a solution'
+    else: 
+        print 'could not find solution'
+    print 'spun for %0.3f seconds' % (time.clock ()-start)
+    #p.display ()
 
     sys.exit (0)
